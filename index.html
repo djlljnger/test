@@ -206,12 +206,61 @@
       border-color: var(--accent-dim);
     }
 
-    .uniswap-wallet {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.8rem;
-      color: var(--accent);
-      word-break: break-all;
+    .uniswap-wallet-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
       margin-bottom: 1rem;
+    }
+
+    .uniswap-wallet-row label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .uniswap-wallet-input {
+      flex: 1;
+      min-width: 200px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      padding: 0.5rem 0.75rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+    }
+
+    .uniswap-wallet-input::placeholder {
+      color: var(--text-muted);
+      opacity: 0.8;
+    }
+
+    .uniswap-wallet-input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .uniswap-btn {
+      padding: 0.5rem 1rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--bg);
+      background: var(--accent);
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .uniswap-btn:hover {
+      background: var(--accent-dim);
+    }
+
+    .uniswap-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
     }
 
     .positions-list {
@@ -309,7 +358,11 @@
     <section class="uniswap-section" style="margin-top: 2rem;">
       <h2 class="section-title">Uniswap V3 — позиции в пулах (Arbitrum)</h2>
       <div class="card uniswap-card">
-        <div class="uniswap-wallet" id="uniswapWallet">0x47c031236e19d024b42f8AE6780E44A573170703</div>
+        <div class="uniswap-wallet-row">
+          <label for="uniswapWalletInput">Адрес кошелька (EVM):</label>
+          <input type="text" id="uniswapWalletInput" class="uniswap-wallet-input" placeholder="0x..." value="0x47c031236e19d024b42f8AE6780E44A573170703" spellcheck="false" />
+          <button type="button" id="uniswapBtn" class="uniswap-btn">Показать позиции</button>
+        </div>
         <div id="uniswapContent">
           <div class="positions-list" id="uniswapPositions"></div>
           <div class="no-positions" id="uniswapEmpty" style="display: none;">Нет открытых позиций в пулах Uniswap V3.</div>
@@ -386,7 +439,6 @@
       document.getElementById('error').style.display = 'none';
     };
 
-    const UNISWAP_WALLET = '0x47c031236e19d024b42f8AE6780E44A573170703';
     const ARBITRUM_RPC = 'https://arb1.arbitrum.io/rpc';
     const NPM_ADDRESS = '0xC36442b4a4522E871399CD717aBDD847Ab11FE88';
     const NPM_ABI = [
@@ -396,16 +448,18 @@
     ];
     const ERC20_ABI = ['function symbol() view returns (string)', 'function decimals() view returns (uint8)'];
 
-    const fetchUniswapPositions = async () => {
+    const fetchUniswapPositions = async (walletAddress) => {
+      const address = (walletAddress || '').trim();
+      if (!ethers.isAddress(address)) throw new Error('Введите корректный EVM-адрес (0x...)');
       const provider = new ethers.JsonRpcProvider(ARBITRUM_RPC);
       const npm = new ethers.Contract(NPM_ADDRESS, NPM_ABI, provider);
-      const balance = await npm.balanceOf(UNISWAP_WALLET);
+      const balance = await npm.balanceOf(address);
       const count = Number(balance);
       if (count === 0) return [];
 
       const tokenIds = [];
       for (let i = 0; i < count; i++) {
-        const id = await npm.tokenOfOwnerByIndex(UNISWAP_WALLET, i);
+        const id = await npm.tokenOfOwnerByIndex(address, i);
         tokenIds.push(id);
       }
 
@@ -492,15 +546,31 @@
     };
 
     const runUniswap = async () => {
+      const input = document.getElementById('uniswapWalletInput');
+      const btn = document.getElementById('uniswapBtn');
+      const loadingEl = document.getElementById('uniswapLoading');
+      const emptyEl = document.getElementById('uniswapEmpty');
+      const listEl = document.getElementById('uniswapPositions');
+      loadingEl.style.display = 'block';
+      emptyEl.style.display = 'none';
+      listEl.innerHTML = '';
+      btn.disabled = true;
       try {
-        const positions = await fetchUniswapPositions();
+        const positions = await fetchUniswapPositions(input.value);
         renderUniswapPositions(positions);
       } catch (e) {
-        document.getElementById('uniswapLoading').style.display = 'none';
-        document.getElementById('uniswapEmpty').style.display = 'block';
-        document.getElementById('uniswapEmpty').textContent = 'Не удалось загрузить позиции: ' + e.message;
+        loadingEl.style.display = 'none';
+        emptyEl.style.display = 'block';
+        emptyEl.textContent = 'Не удалось загрузить позиции: ' + e.message;
+      } finally {
+        btn.disabled = false;
       }
     };
+
+    document.getElementById('uniswapBtn').addEventListener('click', runUniswap);
+    document.getElementById('uniswapWalletInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') runUniswap();
+    });
 
     const run = async () => {
       const dashboard = document.getElementById('dashboard');
@@ -518,9 +588,8 @@
     };
 
     run();
-    runUniswap();
+    runUniswap(); // при загрузке — с адресом по умолчанию из поля
     setInterval(run, 60000);
-    setInterval(runUniswap, 120000); // Uniswap каждые 2 мин
   </script>
 </body>
 </html>
