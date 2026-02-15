@@ -73,13 +73,6 @@
       background-clip: text;
     }
 
-    .badge {
-      margin-top: 0.75rem;
-      font-size: 1rem;
-      font-weight: 600;
-      color: var(--accent);
-    }
-
     .cards {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -192,6 +185,75 @@
       margin-top: 1rem;
     }
 
+    .section-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+      letter-spacing: 0.02em;
+    }
+
+    .uniswap-card {
+      grid-column: 1 / -1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      transition: border-color 0.2s;
+    }
+
+    .uniswap-card:hover {
+      border-color: var(--accent-dim);
+    }
+
+    .uniswap-wallet {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--accent);
+      word-break: break-all;
+      margin-bottom: 1rem;
+    }
+
+    .positions-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .position-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto;
+      gap: 1rem;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      background: var(--bg);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+
+    .position-pair {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .position-fee {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .position-liquidity, .position-fees {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .no-positions {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      padding: 1rem 0;
+    }
+
     footer {
       text-align: center;
       margin-top: 2rem;
@@ -213,7 +275,6 @@
   <div class="container">
     <header>
       <h1>Crypto Dashboard</h1>
-      <p class="badge">Миша молодец</p>
     </header>
 
     <div class="cards" id="dashboard">
@@ -245,14 +306,28 @@
       </div>
     </div>
 
+    <section class="uniswap-section" style="margin-top: 2rem;">
+      <h2 class="section-title">Uniswap V3 — позиции в пулах (Arbitrum)</h2>
+      <div class="card uniswap-card">
+        <div class="uniswap-wallet" id="uniswapWallet">0x47c031236e19d024b42f8AE6780E44A573170703</div>
+        <div id="uniswapContent">
+          <div class="positions-list" id="uniswapPositions"></div>
+          <div class="no-positions" id="uniswapEmpty" style="display: none;">Нет открытых позиций в пулах Uniswap V3.</div>
+        </div>
+        <div id="uniswapLoading" class="no-positions">Загрузка…</div>
+      </div>
+    </section>
+
     <div id="error" class="error" style="display: none;"></div>
 
     <footer>
       Данные: <a href="https://www.coingecko.com/" target="_blank" rel="noopener">CoinGecko</a>,
-      <a href="https://alternative.me/crypto/fear-and-greed-index/" target="_blank" rel="noopener">Alternative.me</a>
+      <a href="https://alternative.me/crypto/fear-and-greed-index/" target="_blank" rel="noopener">Alternative.me</a>,
+      <a href="https://uniswap.org/" target="_blank" rel="noopener">Uniswap V3</a> (Arbitrum)
     </footer>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
   <script>
     const formatPrice = (n) => {
       if (n >= 1e6) return '$' + (n / 1e6).toFixed(2) + 'M';
@@ -311,6 +386,122 @@
       document.getElementById('error').style.display = 'none';
     };
 
+    const UNISWAP_WALLET = '0x47c031236e19d024b42f8AE6780E44A573170703';
+    const ARBITRUM_RPC = 'https://arb1.arbitrum.io/rpc';
+    const NPM_ADDRESS = '0xC36442b4a4522E871399CD717aBDD847Ab11FE88';
+    const NPM_ABI = [
+      'function balanceOf(address owner) view returns (uint256)',
+      'function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)',
+      'function positions(uint256 tokenId) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)'
+    ];
+    const ERC20_ABI = ['function symbol() view returns (string)', 'function decimals() view returns (uint8)'];
+
+    const fetchUniswapPositions = async () => {
+      const provider = new ethers.JsonRpcProvider(ARBITRUM_RPC);
+      const npm = new ethers.Contract(NPM_ADDRESS, NPM_ABI, provider);
+      const balance = await npm.balanceOf(UNISWAP_WALLET);
+      const count = Number(balance);
+      if (count === 0) return [];
+
+      const tokenIds = [];
+      for (let i = 0; i < count; i++) {
+        const id = await npm.tokenOfOwnerByIndex(UNISWAP_WALLET, i);
+        tokenIds.push(id);
+      }
+
+      const tokenInfoCache = {};
+      const getTokenInfo = async (addr) => {
+        const key = addr.toLowerCase();
+        if (tokenInfoCache[key]) return tokenInfoCache[key];
+        try {
+          const t = new ethers.Contract(addr, ERC20_ABI, provider);
+          const [symbol, decimals] = await Promise.all([t.symbol(), t.decimals()]);
+          tokenInfoCache[key] = { symbol: symbol || '?', decimals: Number(decimals) };
+        } catch {
+          tokenInfoCache[key] = { symbol: addr.slice(0, 8) + '…', decimals: 18 };
+        }
+        return tokenInfoCache[key];
+      };
+
+      const positions = [];
+      for (const tokenId of tokenIds) {
+        try {
+          const pos = await npm.positions(tokenId);
+          const liquidity = pos[7];
+          if (liquidity === 0n) continue;
+          const token0 = pos[2];
+          const token1 = pos[3];
+          const fee = pos[4];
+          const tokensOwed0 = pos[10];
+          const tokensOwed1 = pos[11];
+          const [info0, info1] = await Promise.all([getTokenInfo(token0), getTokenInfo(token1)]);
+          positions.push({
+            id: tokenId.toString(),
+            token0: info0,
+            token1: info1,
+            fee: Number(fee) / 1e4,
+            liquidity: liquidity.toString(),
+            tokensOwed0: tokensOwed0.toString(),
+            tokensOwed1: tokensOwed1.toString()
+          });
+        } catch (_) {}
+      }
+      return positions;
+    };
+
+    const formatTokenRaw = (raw, decimals) => {
+      if (!raw || raw === '0') return '0';
+      const n = BigInt(raw);
+      const d = decimals || 18;
+      const div = 10n ** BigInt(d);
+      const intPart = n / div;
+      const fracPart = n % div;
+      const fracStr = fracPart.toString().padStart(d, '0').slice(0, 6).replace(/0+$/, '') || '0';
+      return fracStr ? `${intPart}.${fracStr}` : intPart.toString();
+    };
+
+    const renderUniswapPositions = (positions) => {
+      const listEl = document.getElementById('uniswapPositions');
+      const emptyEl = document.getElementById('uniswapEmpty');
+      const loadingEl = document.getElementById('uniswapLoading');
+      loadingEl.style.display = 'none';
+
+      if (!positions || positions.length === 0) {
+        listEl.innerHTML = '';
+        emptyEl.style.display = 'block';
+        emptyEl.textContent = 'Нет открытых позиций в пулах Uniswap V3.';
+        return;
+      }
+      emptyEl.style.display = 'none';
+      listEl.innerHTML = positions.map(p => {
+        const pair = `${p.token0?.symbol ?? '?'}/${p.token1?.symbol ?? '?'}`;
+        const fee = p.fee != null ? p.fee.toFixed(2) + '%' : '—';
+        const liq = p.liquidity ? (Number(p.liquidity) / 1e18).toFixed(4) : '—';
+        const owed0 = formatTokenRaw(p.tokensOwed0, p.token0?.decimals);
+        const owed1 = formatTokenRaw(p.tokensOwed1, p.token1?.decimals);
+        const feesStr = [owed0 !== '0' ? `${owed0} ${p.token0?.symbol}` : null, owed1 !== '0' ? `${owed1} ${p.token1?.symbol}` : null].filter(Boolean).join(', ') || '—';
+        return `
+          <div class="position-row">
+            <span class="position-pair">${pair}</span>
+            <span class="position-fee">${fee}</span>
+            <span class="position-liquidity">Liquidity: ${liq}</span>
+            <span class="position-fees" title="Накопленные комиссии">Накоплено: ${feesStr}</span>
+          </div>
+        `;
+      }).join('');
+    };
+
+    const runUniswap = async () => {
+      try {
+        const positions = await fetchUniswapPositions();
+        renderUniswapPositions(positions);
+      } catch (e) {
+        document.getElementById('uniswapLoading').style.display = 'none';
+        document.getElementById('uniswapEmpty').style.display = 'block';
+        document.getElementById('uniswapEmpty').textContent = 'Не удалось загрузить позиции: ' + e.message;
+      }
+    };
+
     const run = async () => {
       const dashboard = document.getElementById('dashboard');
       dashboard.classList.add('loading');
@@ -327,7 +518,9 @@
     };
 
     run();
-    setInterval(run, 60000); // обновление каждую минуту
+    runUniswap();
+    setInterval(run, 60000);
+    setInterval(runUniswap, 120000); // Uniswap каждые 2 мин
   </script>
 </body>
 </html>
