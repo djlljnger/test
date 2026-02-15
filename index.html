@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crypto Dashboard — BTC, ETH & Fear & Greed</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0d0f14;
+      --surface: #161a22;
+      --surface-hover: #1e2430;
+      --border: #2a3142;
+      --text: #e8eaed;
+      --text-muted: #8b92a4;
+      --accent: #f59e0b;
+      --accent-dim: #d97706;
+      --btc: #f7931a;
+      --eth: #627eea;
+      --success: #22c55e;
+      --danger: #ef4444;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Subtle grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: 
+        linear-gradient(rgba(245, 158, 11, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(245, 158, 11, 0.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, var(--text) 0%, var(--text-muted) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .card:hover {
+      border-color: var(--accent-dim);
+      transform: translateY(-2px);
+    }
+
+    .card-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .card-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.75rem;
+      font-weight: 700;
+    }
+
+    .card.btc .card-value { color: var(--btc); }
+    .card.eth .card-value { color: var(--eth); }
+
+    .card.usd {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+
+    /* Fear & Greed card */
+    .card.fng {
+      grid-column: 1 / -1;
+      background: linear-gradient(135deg, var(--surface) 0%, rgba(245, 158, 11, 0.08) 100%);
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+
+    .fng-scale {
+      display: flex;
+      margin-top: 1rem;
+      height: 8px;
+      border-radius: 4px;
+      overflow: hidden;
+      background: var(--border);
+    }
+
+    .fng-scale span {
+      flex: 1;
+      transition: opacity 0.3s;
+    }
+
+    .fng-scale span.active {
+      opacity: 1;
+      box-shadow: 0 0 12px currentColor;
+    }
+
+    .fng-scale span:not(.active) {
+      opacity: 0.35;
+    }
+
+    .fng-scale .extreme-fear { background: var(--danger); }
+    .fng-scale .fear { background: #f97316; }
+    .fng-scale .neutral { background: #eab308; }
+    .fng-scale .greed { background: #84cc16; }
+    .fng-scale .extreme-greed { background: var(--success); }
+
+    .fng-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    .loading .card-value::after {
+      content: '…';
+      animation: blink 1s infinite;
+    }
+
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0.3; }
+    }
+
+    .error {
+      color: var(--danger);
+      font-size: 0.9rem;
+      text-align: center;
+      padding: 1rem;
+      background: rgba(239, 68, 68, 0.1);
+      border-radius: 8px;
+      margin-top: 1rem;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 2rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Crypto Dashboard</h1>
+    </header>
+
+    <div class="cards" id="dashboard">
+      <div class="card btc">
+        <div class="card-label">Bitcoin (BTC)</div>
+        <div class="card-value" data-price="btc">—</div>
+        <div class="card usd">USD</div>
+      </div>
+      <div class="card eth">
+        <div class="card-label">Ethereum (ETH)</div>
+        <div class="card-value" data-price="eth">—</div>
+        <div class="card usd">USD</div>
+      </div>
+      <div class="card fng">
+        <div class="card-label">Fear & Greed Index</div>
+        <div class="card-value" data-fng-value>—</div>
+        <div class="card usd" data-fng-classification>—</div>
+        <div class="fng-scale" id="fngScale">
+          <span class="extreme-fear" data-segment="0" title="Extreme Fear">1</span>
+          <span class="fear" data-segment="1">2</span>
+          <span class="neutral" data-segment="2">3</span>
+          <span class="greed" data-segment="3">4</span>
+          <span class="extreme-greed" data-segment="4">5</span>
+        </div>
+        <div class="fng-label">
+          <span>Extreme Fear</span>
+          <span>Extreme Greed</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="error" class="error" style="display: none;"></div>
+
+    <footer>
+      Данные: <a href="https://www.coingecko.com/" target="_blank" rel="noopener">CoinGecko</a>,
+      <a href="https://alternative.me/crypto/fear-and-greed-index/" target="_blank" rel="noopener">Alternative.me</a>
+    </footer>
+  </div>
+
+  <script>
+    const formatPrice = (n) => {
+      if (n >= 1e6) return '$' + (n / 1e6).toFixed(2) + 'M';
+      if (n >= 1e3) return '$' + (n / 1e3).toFixed(2) + 'K';
+      return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    const getFngSegment = (value) => {
+      if (value <= 20) return 0;
+      if (value <= 40) return 1;
+      if (value <= 60) return 2;
+      if (value <= 80) return 3;
+      return 4;
+    };
+
+    const fetchPrices = async () => {
+      const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd');
+      if (!res.ok) throw new Error('Не удалось загрузить цены');
+      const data = await res.json();
+      return {
+        btc: data.bitcoin?.usd ?? 0,
+        eth: data.ethereum?.usd ?? 0
+      };
+    };
+
+    const fetchFng = async () => {
+      const res = await fetch('https://api.alternative.me/fng/?limit=1');
+      if (!res.ok) throw new Error('Не удалось загрузить индекс страха и жадности');
+      const data = await res.json();
+      const item = data?.data?.[0];
+      return {
+        value: parseInt(item?.value ?? 0, 10),
+        classification: item?.value_classification ?? '—'
+      };
+    };
+
+    const updateUI = (prices, fng) => {
+      document.querySelector('[data-price="btc"]').textContent = formatPrice(prices.btc);
+      document.querySelector('[data-price="eth"]').textContent = formatPrice(prices.eth);
+      document.querySelector('[data-fng-value]').textContent = fng.value;
+      document.querySelector('[data-fng-classification]').textContent = fng.classification;
+
+      const segment = getFngSegment(fng.value);
+      document.querySelectorAll('#fngScale span').forEach((el, i) => {
+        el.classList.toggle('active', i === segment);
+      });
+    };
+
+    const showError = (msg) => {
+      const el = document.getElementById('error');
+      el.textContent = msg;
+      el.style.display = 'block';
+    };
+
+    const hideError = () => {
+      document.getElementById('error').style.display = 'none';
+    };
+
+    const run = async () => {
+      const dashboard = document.getElementById('dashboard');
+      dashboard.classList.add('loading');
+      hideError();
+
+      try {
+        const [prices, fng] = await Promise.all([fetchPrices(), fetchFng()]);
+        updateUI(prices, fng);
+      } catch (e) {
+        showError('Ошибка: ' + e.message);
+      } finally {
+        dashboard.classList.remove('loading');
+      }
+    };
+
+    run();
+    setInterval(run, 60000); // обновление каждую минуту
+  </script>
+</body>
+</html>
