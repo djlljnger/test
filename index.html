@@ -109,6 +109,7 @@
 
     .card.btc .card-value { color: var(--btc); }
     .card.eth .card-value { color: var(--eth); }
+    .card.bynex .card-value { color: var(--accent); }
 
     .card.usd {
       font-size: 0.9rem;
@@ -337,6 +338,14 @@
         <div class="card-value" data-price="eth">—</div>
         <div class="card usd">USD</div>
       </div>
+      <div class="card bynex">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem;">
+          <div class="card-label">BYNEX USD/USDT</div>
+          <button type="button" id="bynexRefresh" class="uniswap-btn" style="padding: 0.35rem 0.75rem; font-size: 0.75rem;">Обновить</button>
+        </div>
+        <div class="card-value" data-bynex-price>—</div>
+        <div class="card usd">Каждый час • BYNEX</div>
+      </div>
       <div class="card fng">
         <div class="card-label">Fear & Greed Index</div>
         <div class="card-value" data-fng-value>—</div>
@@ -415,6 +424,27 @@
         value: parseInt(item?.value ?? 0, 10),
         classification: item?.value_classification ?? '—'
       };
+    };
+
+    const fetchBynexPrice = async () => {
+      const res = await fetch('https://bynex.io/trading/ru/usdt/usd');
+      if (!res.ok) throw new Error('BYNEX недоступен');
+      const html = await res.text();
+      const match = html.match(/P\s+([0-9]+(?:\.[0-9]+)?)/);
+      if (!match) throw new Error('Не удалось разобрать цену BYNEX');
+      const usdtUsd = parseFloat(match[1]);
+      if (!Number.isFinite(usdtUsd) || usdtUsd <= 0) {
+        throw new Error('Некорректная цена BYNEX');
+      }
+      const usdUsdt = 1 / usdtUsd;
+      return { usdtUsd, usdUsdt };
+    };
+
+    const updateBynexUI = (bynex) => {
+      const el = document.querySelector('[data-bynex-price]');
+      if (!el) return;
+      el.textContent = bynex.usdUsdt.toFixed(4);
+      el.title = `USDT/USD: ${bynex.usdtUsd.toFixed(6)} на BYNEX`;
     };
 
     const updateUI = (prices, fng) => {
@@ -572,6 +602,19 @@
       if (e.key === 'Enter') runUniswap();
     });
 
+    const runBynex = async () => {
+      const btn = document.getElementById('bynexRefresh');
+      if (btn) btn.disabled = true;
+      try {
+        const bynex = await fetchBynexPrice();
+        updateBynexUI(bynex);
+      } catch (e) {
+        showError('BYNEX: ' + e.message);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    };
+
     const run = async () => {
       const dashboard = document.getElementById('dashboard');
       dashboard.classList.add('loading');
@@ -589,7 +632,10 @@
 
     run();
     runUniswap(); // при загрузке — с адресом по умолчанию из поля
+    runBynex();
+    document.getElementById('bynexRefresh').addEventListener('click', runBynex);
     setInterval(run, 60000);
+    setInterval(runBynex, 3600000); // BYNEX раз в час
   </script>
 </body>
 </html>
